@@ -916,24 +916,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     <h1 class="step-title">Location & machine strategy.</h1>
     <p class="step-desc">Build your route by assigning machines to locations and choosing machine types for each.</p>
 
-    <!-- Autofill Option -->
+    <!-- Quick Autofill Option -->
     <div style="margin-bottom:20px;">
       <button onclick="toggleAutofill()" style="width:100%;padding:14px 20px;background:var(--gold);color:var(--navy);border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;">
-        ⚡ Quick Autofill — Skip the details
+        ⚡ Quick Estimate — Skip the details
       </button>
       <div id="autofillPanel" style="display:none;margin-top:12px;background:var(--card-bg);border:1.5px solid rgba(212,175,55,.2);border-radius:12px;padding:20px;">
-        <div style="font-size:13px;color:var(--text-mid);margin-bottom:14px;">Don't have specific locations yet? Select a location type and average daily visitors per machine to get a quick revenue estimate.</div>
-        <div class="form-row">
-          <div class="form-field">
-            <label class="form-label">Location Type</label>
-            <select class="form-input" id="autofillLocType" style="font-size:14px;">
-              <option value="">Select…</option>
-              <option value="major-city">Major City </option>
-              <option value="city">City &lt;1M Pop </option>
-              <option value="suburban">Suburban </option>
-              <option value="rural">Rural </option>
-            </select>
-          </div>
+        <div style="font-size:13px;color:var(--text-mid);margin-bottom:14px;">Don't have specific locations yet? Enter the average daily visitors per machine to get a quick revenue estimate using $9.34/visitor.</div>
+        <div class="form-row single">
           <div class="form-field">
             <label class="form-label">Avg Daily Visitors per Machine</label>
             <input class="form-input" type="text" placeholder="e.g. 150" id="autofillVisitors" style="font-size:16px;font-weight:600;" oninput="this.value=this.value.replace(/\D/g,'')">
@@ -941,13 +931,16 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         </div>
         <div id="autofillResult" style="display:none;margin-top:14px;padding:14px;background:rgba(212,175,55,.06);border-radius:8px;text-align:center;">
           <div style="font-size:16px;color:var(--text-mid);margin-bottom:4px;">Applied</div>
-          <div style="font-family:'Fraunces',serif;font-size:0px;font-weight:900;color:var(--gold);" id="autofillRevEstimate">-</div>
+          <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:900;color:var(--gold);" id="autofillRevEstimate">-</div>
         </div>
         <button onclick="applyAutofill()" style="margin-top:14px;width:100%;padding:12px;background:rgba(212,175,55,.15);color:var(--gold);border:1.5px solid var(--gold);border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;">
-          Apply Autofill
+          Apply Quick Estimate to Projection
         </button>
       </div>
     </div>
+
+    <!-- Active Route Mode Indicator -->
+    <div id="routeModeIndicator" style="display:none;margin-bottom:20px;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;"></div>
 
     <div style="text-align:center;padding:20px;border-radius:12px;background:rgba(212,175,55,.06);border:1.5px solid rgba(212,175,55,.15);margin-bottom:24px;">
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mid);margin-bottom:4px;">Recommended Machines from Step 2</div>
@@ -957,8 +950,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
     <div class="multi-label">Property Types — assign machines to locations</div>
     <div style="font-size:12px;color:var(--text-mid);margin-bottom:10px;">Machines assigned: <strong id="propAllocated">0</strong></div>
-    <div style="font-size:12px;color:var(--text-mid);opacity:.6;margin-bottom:6px;font-style:italic;">Clear property types to use autofill instead.</div>
-    <button onclick="clearPropertyTypes()" style="margin-bottom:12px;padding:8px 16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text-mid);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;">✕ Clear Property Types</button>
     <div id="propertyGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;"></div>
 
     <!-- Route Builder: each placement gets unit count + machine type -->
@@ -967,6 +958,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <p class="step-desc" style="margin-top:-4px;margin-bottom:12px;">For each location, enter the size and choose a machine type. This builds your route for the ROI calculation.</p>
       <div id="unitInputsList" style="display:flex;flex-direction:column;gap:10px;"></div>
     </div>
+
+    <!-- Apply Specific Route Button -->
+    <button onclick="applySpecificRoute()" style="width:100%;padding:12px;background:rgba(26,158,92,.15);color:var(--green);border:1.5px solid var(--green);border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-bottom:24px;">
+      📍 Apply Specific Route to Projection
+    </button>
 
     <div class="multi-label">Location Type</div>
     <div class="card-grid cols-4" style="margin-bottom:20px;">
@@ -1600,6 +1596,7 @@ const state = {
   programFinanceTerm: 12,
   recommendedPkg: null,
   selectedPkg: null,
+  routeMode: null, // 'autofill', 'specific', or null (default)
 };
 
 const TOTAL_STEPS = 7;
@@ -1733,7 +1730,12 @@ function formatPhone(input) {
 
 function formatProfit(input) {
   let digits = input.value.replace(/\D/g, '');
-  if (!digits) { input.value = ''; return; }
+  if (!digits) { 
+    input.value = ''; 
+    state.desiredProfit = null;
+    recalcMachines();
+    return; 
+  }
   input.value = parseInt(digits).toLocaleString();
   state.desiredProfit = parseInt(digits);
 }
@@ -1920,12 +1922,12 @@ function getTotalMachCount() {
 }
 
 // $/visitor by location type from Avg Per Visitor By Location sheet
-const AVG_PER_VISITOR = {
-  'major-city': 7.66,
-  'city': 11.19,
-  'suburban': 6.77,
-  'rural': 8.64,
-};
+// const AVG_PER_VISITOR = {
+//   'major-city': 7.66,
+//   'city': 11.19,
+//   'suburban': 6.77,
+//   'rural': 8.64,
+// };
 
 function toggleAutofill() {
   const panel = document.getElementById('autofillPanel');
@@ -1933,57 +1935,74 @@ function toggleAutofill() {
 }
 
 function applyAutofill() {
-  const locType = document.getElementById('autofillLocType').value;
   const visitors = parseInt(document.getElementById('autofillVisitors').value) || 0;
 
-  if (!locType || !visitors) {
-    alert('Please select a location type and enter average daily visitors.');
+  if (!visitors) {
+    alert('Please enter average daily visitors.');
     return;
   }
 
-  const dpmRate = AVG_PER_VISITOR[locType] || 9.34;
+  const dpmRate = 9.34;
   const monthlyRev = Math.round(dpmRate * visitors);
 
   // Show result
   document.getElementById('autofillResult').style.display = 'block';
   document.getElementById('autofillRevEstimate').textContent = '$' + monthlyRev.toLocaleString() + '/mo per machine';
 
-  // Set the location type card
-  document.querySelectorAll('[data-group="density"]').forEach(c => c.classList.remove('selected'));
-  const densityCard = document.querySelector('[data-group="density"][data-val="' + locType + '"]');
-  if (densityCard) { densityCard.classList.add('selected'); state.density = locType; }
-
-  // Clear any detailed route placements so autofill takes priority in step 6
-  state.routePlacements = {};
-  state.propertyCounts = {};
-  state.properties = [];
-  state.machineTypes = [];
-  state.machineCounts = {};
-
-  // Store autofill data so step 6 can use it
+  // Store autofill data so projection can use it
   state.autofill = {
-    locType: locType,
+    locType: state.density || 'city',
     visitors: visitors,
     dpmRate: dpmRate,
     monthlyRevPerMachine: monthlyRev,
   };
 
-  // Rebuild grids to reflect cleared state
-  buildStep3Grids();
-}
+  // Set route mode to autofill — projection will use this
+  state.routeMode = 'autofill';
+  updateRouteModeIndicator();
 
-function clearPropertyTypes() {
-  state.propertyCounts = {};
-  state.properties = [];
-  state.routePlacements = {};
-  state.machineTypes = [];
-  state.machineCounts = {};
-  state.propertyUnits = {};
-  buildStep3Grids();
-  renderUnitInputs();
-  // Recompute projection to fall back to autofill or default
+  // Recompute projection
   if (document.getElementById('routeDetailBody')) {
     try { computeProjection(); } catch(e) {}
+  }
+}
+
+function applySpecificRoute() {
+  const placements = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine);
+  if (placements.length === 0) {
+    alert('Add at least one property with a machine type selected to apply a specific route.');
+    return;
+  }
+
+  // Set route mode to specific — projection will use detailed placements
+  state.routeMode = 'specific';
+  updateRouteModeIndicator();
+
+  // Recompute projection
+  if (document.getElementById('routeDetailBody')) {
+    try { computeProjection(); } catch(e) {}
+  }
+}
+
+function updateRouteModeIndicator() {
+  const indicator = document.getElementById('routeModeIndicator');
+  if (!indicator) return;
+
+  if (state.routeMode === 'autofill') {
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(212,175,55,.1)';
+    indicator.style.border = '1.5px solid rgba(212,175,55,.3)';
+    indicator.style.color = 'var(--gold)';
+    indicator.innerHTML = '⚡ Quick Estimate active — projection uses $9.34/visitor × ' + (state.autofill?.visitors || '?') + ' visitors';
+  } else if (state.routeMode === 'specific') {
+    const count = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine).length;
+    indicator.style.display = 'block';
+    indicator.style.background = 'rgba(26,158,92,.1)';
+    indicator.style.border = '1.5px solid rgba(26,158,92,.3)';
+    indicator.style.color = 'var(--green)';
+    indicator.innerHTML = '📍 Specific Route active — projection uses ' + count + ' configured placement' + (count !== 1 ? 's' : '');
+  } else {
+    indicator.style.display = 'none';
   }
 }
 
@@ -2411,7 +2430,7 @@ const PROFIT_PER_MACHINE = 1000;  // steady-state net profit per machine per mon
 const FLAT_MONTHLY_COSTS = 100;  // insurance
 
 const GOAL_MACHINE_MAP = {
-  supplemental: 2.5,
+  supplemental: 3,
   replace: 9,
   family: 11,
   scale: 13
@@ -2450,7 +2469,7 @@ function recalcMachines() {
     goalBased = Math.round(weightedAvg);
     goalNumEl.textContent = goalBased;
     const goalNames = active.map((g, i) => {
-      const labels = {supplemental:'Suppl(2)', replace:'Replace(4)', family:'Family(5)', scale:'Scale(6)'};
+      const labels = {supplemental:'Suppl(3)', replace:'Replace(9)', family:'Family(11)', scale:'Scale(13)'};
       const w = RANK_WEIGHTS[i] || 1;
       return labels[g] + '×' + w;
     });
@@ -2468,6 +2487,7 @@ function recalcMachines() {
   } else {
     profitNumEl.textContent = '—';
     profitDetailEl.textContent = 'enter desired profit';
+    profitBased = null;
   }
 
   // ── Blend ──
@@ -2985,8 +3005,8 @@ function computeProjection() {
   // 2. Autofill (state.autofill set)
   // 3. Default ($900/machine/month)
   const placements = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine);
-  const hasDetailedRoute = placements.length > 0;
-  const hasAutofill = state.autofill && state.autofill.monthlyRevPerMachine > 0;
+  const hasDetailedRoute = state.routeMode === 'specific' && placements.length > 0;
+  const hasAutofill = state.routeMode === 'autofill' && state.autofill && state.autofill.monthlyRevPerMachine > 0;
 
   const tbody = document.getElementById('routeDetailBody');
   tbody.innerHTML = '';
@@ -3390,9 +3410,9 @@ function collectFormData(stepNum) {
   const pkgPrices = {bronze:5997, silver:8997, gold:10997};
   const pkgCost = pkgPrices[state.selectedPkg] || 5997;
 
-  const hasAutofill = state.autofill && state.autofill.monthlyRevPerMachine > 0;
+  const hasAutofill = state.routeMode === 'autofill' && state.autofill && state.autofill.monthlyRevPerMachine > 0;
 
-  if (placements.length > 0) {
+  if (state.routeMode === 'specific' && placements.length > 0) {
     // MODE 1: Detailed route placements
     let totalMoRev = 0, totalMachCost = 0;
     placements.forEach(p => {
@@ -3591,6 +3611,7 @@ function collectRestorableState() {
       priceMode: state.priceMode,
       selectedPkg: state.selectedPkg,
       autofill: state.autofill,
+      routeMode: state.routeMode,
     },
     // Form field values
     f: {
@@ -3722,6 +3743,9 @@ function restoreUIFromState() {
   
   // Update funding UI
   updateFundingUI();
+  
+  // Restore route mode indicator
+  updateRouteModeIndicator();
   
   // Navigate to the correct step
   showStep('step-' + state.step);
