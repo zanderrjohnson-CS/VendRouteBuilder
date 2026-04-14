@@ -2704,11 +2704,14 @@ function updateFundingUI() {
   const eff = getEffectiveCreditInfo(score, dti);
 
   if (machFunding === 'business_credit') {
+    // Personal loan — APR applies, no down payment (full amount financed)
     const apr = getAPRRange(eff.score);
     aprLabel = apr.label + (!eff.hasScore ? ' (est.)' : '');
     $('estAPR', aprLabel);
-    $('estDown', '—');
-  } else if (machNeedsCredit) {
+    downPctLo = 0; downPctHi = 0;
+    $('estDown', '0% — Personal Loan');
+  } else if (machFunding === 'financing') {
+    // Partner lender financing — APR + down payment
     const apr = getAPRRange(eff.score);
     aprLabel = apr.label + (!eff.hasScore ? ' (est.)' : '');
     $('estAPR', aprLabel);
@@ -2718,7 +2721,7 @@ function updateFundingUI() {
     downLabel = dp.lo + '%–' + dp.hi + '%' + (!eff.hasScore || !eff.hasDti ? ' (est.)' : '');
     $('estDown', downLabel);
   } else {
-    // Cash / ROBS — no APR or down payment applies to machines
+    // Cash / ROBS — no APR or down payment
     $('estAPR', machFunding ? 'N/A — Cash' : '—');
     $('estDown', machFunding ? '100%' : '—');
   }
@@ -2728,12 +2731,15 @@ function updateFundingUI() {
   $('machLabel', numMachines + ' Machine' + (numMachines > 1 ? 's' : '') + ' (avg ' + $$(avgMachineCost) + ' ea)');
   if (machNeedsCredit) {
     const avgDown = (downPctLo + downPctHi) / 2 / 100;
-    const downAmt = totalMachineCost * avgDown;
-    const financed = totalMachineCost - downAmt;
+    const financed = totalMachineCost * (1 - avgDown);
     const apr = getAPRRange(eff.score);
     const monthlyLo = pmt(apr.lo / 100, machTerm, financed);
     const monthlyHi = pmt(apr.hi / 100, machTerm, financed);
-    $('machUpfront', $$(totalMachineCost * downPctLo / 100) + '–' + $$(totalMachineCost * downPctHi / 100));
+    if (avgDown > 0) {
+      $('machUpfront', $$(totalMachineCost * downPctLo / 100) + '–' + $$(totalMachineCost * downPctHi / 100));
+    } else {
+      $('machUpfront', '$0');
+    }
     $('machMonthly', $$(monthlyLo) + '–' + $$(monthlyHi) + ' × ' + machTerm + 'mo');
   } else if (machFunding === 'cash' || machFunding === 'robs') {
     $('machUpfront', $$(totalMachineCost));
@@ -3113,10 +3119,15 @@ function computeProjection() {
   if (machNeedsFinancing) {
     const eff = getEffectiveCreditInfo(state.creditScore, state.dti);
     const apr = getAPRRange(eff.score);
-    const dp = getDownPct(eff.score, eff.dti);
-    const avgDown = ((dp.lo + dp.hi) / 2) / 100;
-    const financed = totalMachineCost * (1 - avgDown);
     const avgRate = (apr.lo + apr.hi) / 2;
+    let avgDown = 0;
+    if (machFunding === 'financing') {
+      // Partner lender — has down payment
+      const dp = getDownPct(eff.score, eff.dti);
+      avgDown = ((dp.lo + dp.hi) / 2) / 100;
+    }
+    // business_credit (personal loan) — 0% down, full amount financed
+    const financed = totalMachineCost * (1 - avgDown);
     machMonthlyPayment = pmt(avgRate / 100, machTerm, financed);
   }
 
@@ -3132,9 +3143,13 @@ function computeProjection() {
   // Upfront investment calculation
   let upfrontInvestment = 600; // startup costs
   if (machNeedsFinancing) {
-    const eff = getEffectiveCreditInfo(state.creditScore, state.dti);
-    const dp = getDownPct(eff.score, eff.dti);
-    upfrontInvestment += ((dp.lo + dp.hi) / 2 / 100) * totalMachineCost;
+    if (machFunding === 'financing') {
+      // Partner lender — down payment required
+      const eff = getEffectiveCreditInfo(state.creditScore, state.dti);
+      const dp = getDownPct(eff.score, eff.dti);
+      upfrontInvestment += ((dp.lo + dp.hi) / 2 / 100) * totalMachineCost;
+    }
+    // business_credit (personal loan) — $0 down, nothing added to upfront
   } else {
     upfrontInvestment += totalMachineCost;
   }
