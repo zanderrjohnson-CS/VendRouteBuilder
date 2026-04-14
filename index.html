@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VendingPreneur — Discovery Call</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,600;0,700;0,900;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 /* ─── RESET & BASE ─── */
@@ -652,100 +653,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   .step-title { font-size: 28px; }
   .packages-grid { grid-template-columns: 1fr; }
   .pkg-incl-grid { grid-template-columns: 1fr; }
-}
-/* ─── PRINT STYLES (for PDF export) ─── */
-@media print {
-  /* Page setup - force single page */
-  @page {
-    size: letter;
-    margin: 0.3in;
-  }
-  
-  /* Hide everything except step-7 (Route Projection) */
-  body > *:not(.main) { display: none !important; }
-  .topbar, .progress-wrap, .step-nav { display: none !important; }
-  .step-screen:not(#step-7) { display: none !important; }
-  #step-7 .step-eyebrow,
-  #step-7 .step-title,
-  #step-7 .step-desc { display: none !important; }
-  
-  /* Hide elements that aren't essential for single-page PDF */
-  #step-7 .info-box { display: none !important; }
-  #costOfWaitingBox { display: none !important; }
-  
-  /* Force step-7 visible and full width */
-  #step-7 {
-    display: block !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-  .main {
-    padding-top: 0 !important;
-    min-height: auto !important;
-  }
-  
-  /* Shrink everything to fit */
-  #step-7 {
-    font-size: 9px !important;
-    transform: scale(0.85);
-    transform-origin: top left;
-    width: 117% !important;
-  }
-  
-  /* Flatten the 2-column grid to single column or tighter layout */
-  #step-7 > div:first-of-type {
-    display: block !important;
-    grid-template-columns: 1fr !important;
-  }
-  
-  /* Hide the What-If sidebar boxes to save space */
-  #step-7 > div:first-of-type > div:last-child {
-    display: none !important;
-  }
-  
-  /* Compact the projection hero */
-  .projection-hero {
-    padding: 12px !important;
-    margin-bottom: 12px !important;
-  }
-  .proj-name { font-size: 18px !important; }
-  
-  /* Compact tables */
-  #step-7 table {
-    font-size: 9px !important;
-  }
-  #step-7 table th,
-  #step-7 table td {
-    padding: 4px 8px !important;
-  }
-  
-  /* Compact profit section */
-  #projProfitSection > div {
-    gap: 8px !important;
-    margin-bottom: 12px !important;
-  }
-  #projProfitSection [style*="font-size:36px"],
-  #projProfitSection [style*="font-size:32px"],
-  #projProfitSection [style*="font-size:30px"] {
-    font-size: 22px !important;
-  }
-  #projProfitSection [style*="font-size:24px"] {
-    font-size: 16px !important;
-  }
-  #projProfitSection [style*="padding:24px"],
-  #projProfitSection [style*="padding:20px"],
-  #projProfitSection [style*="padding:18px"],
-  #projProfitSection [style*="padding:16px"] {
-    padding: 10px !important;
-  }
-  
-  /* Force backgrounds to print */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
 }
 </style>
 </head>
@@ -3343,11 +3250,145 @@ function toggleRecBreakdown() {
 // ══════════════════════════════════
 function grabProjectionPDF() {
   const name = document.getElementById('fnName')?.value || 'Prospect';
-  const originalTitle = document.title;
-  document.title = 'VendingPreneur Projection — ' + name;
-  window.print();
-  // Restore title after print dialog closes
-  setTimeout(() => { document.title = originalTitle; }, 1000);
+  const city = document.getElementById('fnCity')?.value || '';
+  const filename = 'VendingPreneur_Projection_' + name.replace(/\s+/g, '_') + '.pdf';
+
+  // Read computed data from the live step 7 elements
+  const projName = document.getElementById('projName')?.textContent || '';
+  const projTags = document.getElementById('projTags')?.innerHTML || '';
+  const routeBody = document.getElementById('routeDetailBody')?.innerHTML || '';
+  const profitSection = document.getElementById('projProfitSection')?.innerHTML || '';
+  const expenseBody = document.getElementById('expenseBody')?.innerHTML || '';
+  const costOfWaiting = document.getElementById('costOfWaitingBox')?.innerHTML || '';
+
+  // Color map — all hardcoded, zero CSS variables
+  const C = {
+    bg: '#0B1E33',
+    card: '#152D4A',
+    gold: '#E8A020',
+    green: '#1A9E5C',
+    red: '#D94F3D',
+    textLight: '#B0C4DE',
+    textMid: '#7A8FA8',
+    border: 'rgba(255,255,255,0.08)',
+    borderGold: 'rgba(212,175,55,0.08)',
+  };
+
+  // Helper to replace CSS vars in innerHTML strings
+  function fixColors(html) {
+    return html
+      .replace(/var\(--navy\)/g, C.bg)
+      .replace(/var\(--navy-2\)/g, '#152D4A')
+      .replace(/var\(--navy-3\)/g, '#1E3D63')
+      .replace(/var\(--gold\)/g, C.gold)
+      .replace(/var\(--gold-2\)/g, '#F5C55A')
+      .replace(/var\(--green\)/g, C.green)
+      .replace(/var\(--green-2\)/g, '#22C97A')
+      .replace(/var\(--red\)/g, C.red)
+      .replace(/var\(--text-red\)/g, C.red)
+      .replace(/var\(--cream\)/g, C.bg)
+      .replace(/var\(--cream-2\)/g, C.card)
+      .replace(/var\(--white\)/g, '#E8E0D4')
+      .replace(/var\(--text\)/g, '#E8E0D4')
+      .replace(/var\(--text-mid\)/g, C.textMid)
+      .replace(/var\(--text-light\)/g, C.textLight)
+      .replace(/var\(--card-bg\)/g, C.card)
+      .replace(/var\(--border\)/g, C.border)
+      .replace(/var\(--border-2\)/g, 'rgba(255,255,255,0.05)')
+      .replace(/var\(--shadow-sm\)/g, 'none')
+      .replace(/var\(--shadow-md\)/g, 'none')
+      .replace(/var\(--radius\)/g, '12px')
+      .replace(/var\(--radius-sm\)/g, '8px')
+      .replace(/var\(--radius-lg\)/g, '16px');
+  }
+
+  const thStyle = 'text-align:left;padding:10px 14px;background:rgba(212,175,55,0.12);border:1px solid rgba(255,255,255,0.08);color:' + C.textMid + ';font-size:11px;text-transform:uppercase;letter-spacing:0.06em;';
+
+  // Build the PDF HTML — single column, fixed 800px width
+  const pdfHTML = `
+    <div style="width:800px;background:${C.bg};color:${C.textLight};font-family:'Syne',Helvetica,Arial,sans-serif;padding:32px;">
+      
+      <!-- Header -->
+      <div style="margin-bottom:24px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${C.gold};margin-bottom:6px;">VendingPreneur Route Projection</div>
+        <div style="font-family:'Fraunces',Georgia,serif;font-size:20px;font-weight:700;color:white;">${name}${city ? ' — ' + city : ''}</div>
+      </div>
+
+      <!-- Route Summary Hero -->
+      <div style="background:${C.card};border-radius:12px;padding:24px;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:${C.gold};margin-bottom:6px;">Route Summary</div>
+        <div style="font-family:'Fraunces',Georgia,serif;font-size:18px;font-weight:700;color:white;margin-bottom:10px;">${projName}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${fixColors(projTags)}</div>
+      </div>
+
+      <!-- Route Detail Table -->
+      <div style="margin-bottom:20px;">
+        <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="${thStyle}border-radius:10px 0 0 0;">Location</th>
+              <th style="${thStyle}text-align:center;">Machine</th>
+              <th style="${thStyle}text-align:right;">Units</th>
+              <th style="${thStyle}text-align:right;">$/Unit</th>
+              <th style="${thStyle}text-align:right;">Est. RPM</th>
+              <th style="${thStyle}text-align:right;border-radius:0 10px 0 0;">Machine Cost</th>
+            </tr>
+          </thead>
+          <tbody>${fixColors(routeBody)}</tbody>
+        </table>
+      </div>
+
+      <!-- Profit Section -->
+      ${fixColors(profitSection)}
+
+      <!-- Expense Table -->
+      <div style="margin-bottom:20px;">
+        <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="${thStyle}border-radius:10px 0 0 0;" colspan="2">Annual Financial Projection</th>
+              <th style="${thStyle}text-align:right;border-radius:0 10px 0 0;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${fixColors(expenseBody)}</tbody>
+        </table>
+      </div>
+
+      <!-- Cost of Waiting -->
+      ${fixColors(costOfWaiting)}
+
+      <!-- Footer -->
+      <div style="text-align:center;font-size:10px;color:${C.textMid};opacity:0.6;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);">
+        VendingPreneur Discovery Call — Generated ${new Date().toLocaleDateString()}
+      </div>
+    </div>
+  `;
+
+  // Create off-screen container
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-9999px;top:0;';
+  container.innerHTML = pdfHTML;
+  document.body.appendChild(container);
+  const el = container.firstElementChild;
+
+  html2pdf().set({
+    margin: 0,
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      scrollY: 0,
+      backgroundColor: C.bg,
+      width: 800,
+    },
+    jsPDF: { unit: 'px', format: [800, el.scrollHeight], orientation: 'portrait' },
+    pagebreak: { mode: [] },
+  }).from(el).save().then(() => {
+    container.remove();
+  }).catch(() => {
+    container.remove();
+  });
 }
 
 // ══════════════════════════════════
