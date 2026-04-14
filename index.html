@@ -1366,9 +1366,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
     <div class="step-nav">
       <button class="btn-back" onclick="prevStep()">← Back</button>
-      <button class="btn-next" onclick="nextStep()">See Route Projection <span class="btn-next-arrow">→</span></button>
+      <button class="btn-next" onclick="nextStep()">Continue<span class="btn-next-arrow">→</span></button>
     </div>
-  </div>
+  </div>  
 
   <!-- ══ PAGE 6: OBJECTION HANDLING ══ -->
   <div class="step-screen" id="step-6">
@@ -2411,10 +2411,10 @@ const PROFIT_PER_MACHINE = 1000;  // steady-state net profit per machine per mon
 const FLAT_MONTHLY_COSTS = 100;  // insurance
 
 const GOAL_MACHINE_MAP = {
-  supplemental: 2,
-  replace: 3,
-  family: 4,
-  scale: 5
+  supplemental: 2.5,
+  replace: 9,
+  family: 11,
+  scale: 13
 };
 
 function recalcMachines() {
@@ -2476,10 +2476,10 @@ function recalcMachines() {
     recommended = Math.round((goalBased + profitBased) / 2);
     labelEl.textContent = recommended + ' machines recommended (avg of goals + profit)';
   } else if (goalBased !== null) {
-    recommended = goalBased;
+    recommended = Math.round(goalBased);
     labelEl.textContent = recommended + ' machine' + (recommended > 1 ? 's' : '') + ' recommended (from goals)';
   } else if (profitBased !== null) {
-    recommended = profitBased;
+    recommended = Math.round(profitBased);
     labelEl.textContent = recommended + ' machine' + (recommended > 1 ? 's' : '') + ' recommended (from desired profit)';
   } else {
     numEl.textContent = '—';
@@ -3725,6 +3725,11 @@ function restoreUIFromState() {
   
   // Navigate to the correct step
   showStep('step-' + state.step);
+  
+  // Compute projection if restoring to or past the projection step
+  if (state.step >= 7) {
+    try { computeProjection(); } catch(e) {}
+  }
 }
 
 // Restore goal ranking drag-drop UI from state
