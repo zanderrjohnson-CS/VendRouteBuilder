@@ -1459,6 +1459,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       
       <button class="btn-next" onclick="location.reload()" style="margin:0 auto;">Start New Discovery Call <span class="btn-next-arrow">→</span></button>
+      <button onclick="goBackToEdit()" style="margin:12px auto 0;display:block;background:transparent;border:2px solid var(--gold);border-radius:var(--radius-sm);padding:12px 28px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--gold);cursor:pointer;transition:all .2s;">← Go Back & Edit</button>
     </div>
   </div>
 
@@ -1623,6 +1624,11 @@ function showStep(id) {
   updateProgress();
   setLoading(false);
   if (id === 'step-3') buildStep3Grids();
+  if (id === 'step-4') {
+    // Auto-refresh prospect match if the panel is open
+    const matchContent = document.getElementById('prospectMatchContent');
+    if (matchContent && matchContent.style.display !== 'none') findProspectMatch();
+  }
 }
 
 function formatPhone(input) {
@@ -1716,6 +1722,16 @@ function submitForm() {
     
     setLoading(false);
   }, 600);
+}
+
+function goBackToEdit() {
+  // Restore progress bar
+  document.getElementById('progressSteps').style.display = '';
+  // Go back to the last real step
+  state.step = TOTAL_STEPS;
+  showStep('step-' + state.step);
+  // Recompute projection since we're likely going back to step 7
+  try { computeProjection(); } catch(e) {}
 }
 
 function copyShareableURL() {
@@ -2103,6 +2119,10 @@ function syncRouteToState() {
   if (document.getElementById('routeDetailBody')) {
     try { computeProjection(); } catch(e) {}
   }
+
+  // Refresh prospect match if panel is open
+  const matchContent = document.getElementById('prospectMatchContent');
+  if (matchContent && matchContent.style.display !== 'none') findProspectMatch();
 }
 
 function selectTL(el) {
@@ -2334,7 +2354,7 @@ function syncGoalState() {
 //   Flat costs: insurance $100/mo (shared across all machines)
 //   Formula: machines = ceil((desiredProfit + $100 insurance) / $520)
 
-const PROFIT_PER_MACHINE = 1000;  // steady-state net profit per machine per month
+const PROFIT_PER_MACHINE = 800;  // steady-state net profit per machine per month
 const FLAT_MONTHLY_COSTS = 100;  // insurance
 
 const GOAL_MACHINE_MAP = {
@@ -2389,7 +2409,7 @@ function recalcMachines() {
 
   // ── Profit-based calculation ──
   if (desiredProfit > 0) {
-    profitBased = (desiredProfit + FLAT_MONTHLY_COSTS) / PROFIT_PER_MACHINE;
+    profitBased = (desiredProfit) / PROFIT_PER_MACHINE;
     profitNumEl.textContent = profitBased;
     profitDetailEl.textContent = '$' + desiredProfit.toLocaleString() + ' ÷ $' + PROFIT_PER_MACHINE + '/machine';
   } else {
@@ -2863,63 +2883,65 @@ function toggleProspectMatch() {
 
 function findProspectMatch() {
   const body = document.getElementById('prospectMatchBody');
-  const placements = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine);
+  if (!body) return;
 
-  if (placements.length === 0) {
-    body.innerHTML = 'Configure your route in Step 3 first — select property types and machine types to see a matching member.';
-    return;
-  }
-
-  // Find matches for each placement, show the best one
   const locName = DENSITY_NAME_MAP[state.density] || 'City (<1M Population)';
-  let bestMatch = null;
-  let matchLevel = '';
+  const placements = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine);
+  const hasRoute = state.routeMode === 'specific' && placements.length > 0;
 
-  for (const p of placements) {
-    const propName = PROP_NAME_MAP[p.property] || '';
-    const machName = MACH_NAME_MAP[p.machine] || '';
+  // Collect all matching candidates across all placements
+  let allMatches = [];
 
-    // Exact: prop + loc + machine
-    let matches = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.l === locName && e.m === machName);
-    if (matches.length > 0) {
-      bestMatch = matches[Math.floor(Math.random() * matches.length)];
-      matchLevel = 'exact';
-      break;
-    }
-    // Fallback: prop + loc (any machine)
-    matches = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.l === locName);
-    if (matches.length > 0) {
-      bestMatch = matches[Math.floor(Math.random() * matches.length)];
-      matchLevel = 'prop+loc';
-      continue; // keep looking for exact
-    }
-    // Fallback: prop + machine (any loc)
-    matches = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.m === machName);
-    if (matches.length > 0 && !bestMatch) {
-      bestMatch = matches[Math.floor(Math.random() * matches.length)];
-      matchLevel = 'prop+mach';
-    }
-    // Fallback: just prop
-    if (!bestMatch) {
-      matches = PROSPECT_EXAMPLES.filter(e => e.p === propName);
-      if (matches.length > 0) {
-        bestMatch = matches[Math.floor(Math.random() * matches.length)];
-        matchLevel = 'prop';
-      }
+  if (hasRoute) {
+    for (const p of placements) {
+      const propName = PROP_NAME_MAP[p.property] || '';
+      const machName = MACH_NAME_MAP[p.machine] || '';
+
+      // Exact: prop + loc + machine
+      const exact = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.l === locName && e.m === machName);
+      if (exact.length > 0) { allMatches = allMatches.concat(exact); continue; }
+
+      // prop + loc (any machine)
+      const propLoc = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.l === locName);
+      if (propLoc.length > 0) { allMatches = allMatches.concat(propLoc); continue; }
+
+      // prop + machine (any loc)
+      const propMach = PROSPECT_EXAMPLES.filter(e => e.p === propName && e.m === machName);
+      if (propMach.length > 0) { allMatches = allMatches.concat(propMach); continue; }
+
+      // just prop
+      const propOnly = PROSPECT_EXAMPLES.filter(e => e.p === propName);
+      if (propOnly.length > 0) { allMatches = allMatches.concat(propOnly); }
     }
   }
 
-  if (!bestMatch) {
-    // Final fallback: random high-performer
-    const topPerformers = PROSPECT_EXAMPLES.filter(e => e.r >= 1500);
-    bestMatch = topPerformers[Math.floor(Math.random() * topPerformers.length)];
-    matchLevel = 'general';
+  // If no matches from route (or autofill/no route), use all examples
+  if (allMatches.length === 0) {
+    allMatches = PROSPECT_EXAMPLES.slice();
   }
 
-  const m = bestMatch;
+  // Deduplicate by name+property+machine to avoid showing the same person twice
+  const seen = new Set();
+  allMatches = allMatches.filter(m => {
+    const key = m.n + '|' + m.p + '|' + m.m;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // Pick a random one
+  const m = allMatches[Math.floor(Math.random() * allMatches.length)];
   const locLabel = m.l === 'City (<1M Population)' ? 'a city' : m.l === 'Major City' ? 'a major city' : m.l.toLowerCase();
+
+  let matchNote = '';
+//   if (!hasRoute) {
+//     matchNote = '<div style="font-size:11px;color:var(--text-mid);opacity:.6;margin-top:8px;">Showing a random member — apply a specific route in Step 3 for a closer match.</div>';
+//   }
+
   body.innerHTML = '<strong>' + m.n + '</strong> has a <strong>' + m.m + '</strong> in a <strong>' + m.p + '</strong> in ' + locLabel + ' and is doing <strong style="color:var(--green);">$' + m.r.toLocaleString() + '/month</strong>. ' +
-    'They\'re a real VendingPreneur member with a setup similar to what your prospect is looking at.';
+    'They\'re a real VendingPreneur member with a setup similar to what your prospect is looking at.' +
+    '<div style="margin-top:10px;"><button onclick="findProspectMatch()" style="background:rgba(212,175,55,.1);border:1px solid rgba(212,175,55,.3);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--gold);cursor:pointer;">🔄 Show another member</button></div>' +
+    matchNote;
 }
 
 function computeProjection() {
@@ -3550,9 +3572,23 @@ function collectFormData(stepNum) {
     packageCost = pkgCost;
   }
 
-  // What-if: 1 machine (static from the HTML)
-  wi1yr1 = 140;
-  wi1yr2 = 10140;
+  // Upfront investment (matches computeProjection logic)
+  const machFunding = state.funding;
+  const machNeedsFinancing = (machFunding === 'financing' || machFunding === 'business_credit');
+  const progNeedsFinancing = (state.programFunding === 'finance');
+  let upfrontInvest = 600; // startup costs
+  if (machNeedsFinancing) {
+    if (machFunding === 'financing') {
+      const eff = getEffectiveCreditInfo(state.creditScore, state.dti);
+      const dp = getDownPct(eff.score, eff.dti);
+      upfrontInvest += ((dp.lo + dp.hi) / 2 / 100) * machineCostTotal;
+    }
+  } else {
+    upfrontInvest += machineCostTotal;
+  }
+  if (!progNeedsFinancing) {
+    upfrontInvest += pkgCost;
+  }
 
   return {
     session_id:         SESSION_ID,
@@ -3598,7 +3634,7 @@ function collectFormData(stepNum) {
     machine_cost_total:  machineCostTotal,
     package_cost:        packageCost,
     break_even_months:   breakEvenMonths,
-    whatif_1machine_yr1: wi1yr1,
+    upfront_investment: Math.round(upfrontInvest),
     whatif_1machine_yr2: wi1yr2,
     whatif_double_monthly_profit: wiDblProfit,
     whatif_double_asset_value: wiDblAsset,
