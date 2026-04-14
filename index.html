@@ -1883,6 +1883,7 @@ function applySpecificRoute() {
 
   // Set route mode to specific — projection will use detailed placements
   state.routeMode = 'specific';
+  state.machines = placements.length;
   updateRouteModeIndicator();
 
   // Recompute projection
