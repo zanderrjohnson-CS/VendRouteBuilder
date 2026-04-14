@@ -2585,15 +2585,28 @@ function updateFundingUI() {
   state.creditScore = score;
   state.dti = dti;
 
-  // Calculate total machine cost from selected types × recommended machine count
-  let avgMachineCost = 0;
-  if (state.machineTypes.length > 0) {
-    avgMachineCost = state.machineTypes.reduce((sum, m) => sum + (MACHINE_COSTS[m] || 6000), 0) / state.machineTypes.length;
+  // Calculate total machine cost based on applied route mode
+  let avgMachineCost = 6000;
+  let numMachines = state.machines || 1;
+  let totalMachineCost = 0;
+
+  if (state.routeMode === 'specific') {
+    const placements = Object.values(state.routePlacements || {}).filter(p => p.property && p.machine);
+    if (placements.length > 0) {
+      numMachines = placements.length;
+      placements.forEach(p => { totalMachineCost += (p.machineCost || MACHINE_COSTS[p.machine] || 6000); });
+      avgMachineCost = totalMachineCost / numMachines;
+    } else {
+      totalMachineCost = avgMachineCost * numMachines;
+    }
+  } else if (state.routeMode === 'autofill') {
+    totalMachineCost = 6000 * numMachines;
   } else {
-    avgMachineCost = 6000;
+    if (state.machineTypes.length > 0) {
+      avgMachineCost = state.machineTypes.reduce((sum, m) => sum + (MACHINE_COSTS[m] || 6000), 0) / state.machineTypes.length;
+    }
+    totalMachineCost = avgMachineCost * numMachines;
   }
-  const numMachines = state.machines || 1;
-  const totalMachineCost = avgMachineCost * numMachines;
 
   // Package info
   const pkg = PKG_PRICES[state.selectedPkg || 'bronze'];
